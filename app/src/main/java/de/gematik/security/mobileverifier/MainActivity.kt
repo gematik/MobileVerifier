@@ -57,10 +57,16 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+enum class State {
+    UNKNOWN,
+    APPROVED,
+    DENIED
+}
+
 @Composable
 fun QrCodeScan() {
     Box {
-        val isVaccinationValid = remember { mutableStateOf(false) }
+        val isVaccinationValid = remember { mutableStateOf(State.UNKNOWN) }
 
         Text(
             "Vaccination Certificate",
@@ -74,7 +80,7 @@ fun QrCodeScan() {
             onResult = { result ->
                 Log.i(TAG, "scanned code: ${result.contents}")
                 val oob = URI.create(result.contents).query.substringAfter("oob=", "").substringBefore("&")
-                if(oob.isNotEmpty()){
+                if (oob.isNotEmpty()) {
                     controller.acceptInvitation(
                         invitation = json.decodeFromString<Invitation>(String(Base64.getDecoder().decode(oob))),
                         updateState = { state -> isVaccinationValid.value = state }
@@ -84,7 +90,13 @@ fun QrCodeScan() {
         )
 
         Image(
-            painterResource(if (isVaccinationValid.value) R.drawable.approved else R.drawable.denied),
+            painterResource(
+                when (isVaccinationValid.value) {
+                    State.APPROVED -> R.drawable.approved
+                    State.UNKNOWN -> R.drawable.unknown
+                    State.DENIED -> R.drawable.denied
+                }
+            ),
             "denied",
             Modifier
                 .align(Alignment.Center)
@@ -92,7 +104,7 @@ fun QrCodeScan() {
 
         Button(
             onClick = {
-                isVaccinationValid.value = false
+                isVaccinationValid.value = State.UNKNOWN
                 scanLauncher.launch(
                     ScanOptions().apply {
                         setDesiredBarcodeFormats(BarcodeFormat.QR_CODE.name)
