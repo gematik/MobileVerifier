@@ -38,7 +38,11 @@ class Controller(val mainActivity: MainActivity) {
     ): Boolean {
         val type = message.type ?: return true //ignore
         return when {
-            type.contains("Close") -> false // close connection
+            type.contains("Close") -> handleClose(
+                protocolInstance,
+                message as Close,
+                updateState
+            ) // close connection
             type.contains("PresentationOffer") -> handlePresentationOffer(
                 protocolInstance,
                 message as PresentationOffer
@@ -66,21 +70,25 @@ class Controller(val mainActivity: MainActivity) {
             credentialSubject?.get("@explicit")?.jsonPrimitive?.boolean == true &&
             !credentialSubject.containsKey("order")
         ) return false
-        val frame = Credential( // frame requesting vaccination status only
+        val frame = Credential(
+            // frame requesting vaccination status only
             atContext = Credential.DEFAULT_JSONLD_CONTEXTS + listOf(URI.create("https://w3id.org/vaccination/v1")),
             type = Credential.DEFAULT_JSONLD_TYPES + listOf("VaccinationCertificate"),
             credentialSubject = JsonObject(
                 mapOf(
                     "@explicit" to JsonPrimitive(true),
+                    "@requireAll" to JsonPrimitive(true),
                     "type" to JsonArray(listOf(JsonPrimitive("VaccinationEvent"))),
-                    "order" to JsonObject(mapOf()),
-                    "recipient" to JsonObject(mapOf(
-                        "@explicit" to JsonPrimitive(true),
-                        "type" to JsonArray(listOf(JsonPrimitive("VaccineRecipient"))),
-                        "id" to JsonObject(mapOf())
-                    ))
+                    "order" to JsonArray(listOf(JsonPrimitive("3/3"))),
+                    "recipient" to JsonObject(
+                        mapOf(
+                            "@explicit" to JsonPrimitive(true),
+                            "type" to JsonArray(listOf(JsonPrimitive("VaccineRecipient"))),
+                            "id" to JsonObject(mapOf())
+                        )
+                    )
                 )
-            )
+            ),
         )
         protocolInstance.requestPresentation(
             PresentationRequest(
@@ -99,11 +107,20 @@ class Controller(val mainActivity: MainActivity) {
         updateState: (State) -> Unit
     ): Boolean {
         val isSuccess = verifyPresentation(presentationSubmit.presentation)
-        updateState(if (isSuccess) State.APPROVED else State.DENIED )
+        updateState(if (isSuccess) State.APPROVED else State.DENIED)
         return false
     }
 
-    private fun verifyPresentation(presentation: Presentation) : Boolean{
+    private fun handleClose(
+        protocolInstance: PresentationExchangeVerifierProtocol,
+        close: Close,
+        updateState: (State) -> Unit
+    ): Boolean {
+        updateState(State.DENIED)
+        return false
+    }
+
+    private fun verifyPresentation(presentation: Presentation): Boolean {
         val credential = presentation.verifiableCredential.get(0)
         if (!(credential.type.contains("VaccinationCertificate"))) return false // is vaccination certificate?
         if (!(credential.credentialSubject?.get("order")?.jsonPrimitive?.content == "3/3")) return false // is patient fully vaccinated?
