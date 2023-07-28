@@ -11,7 +11,7 @@ import java.net.URI
 class Controller(val mainActivity: MainActivity) {
     val TAG = Controller::class.java.name
 
-    fun acceptInvitation(invitation: Invitation, updateState: (State) -> Unit) {
+    fun acceptInvitation(invitation: Invitation, updateState: (VerificationResult) -> Unit) {
         mainActivity.lifecycleScope.launch {
             invitation.service[0].serviceEndpoint?.let { serviceEndpoint ->
                 Log.d(TAG, "invitation accepted from ${serviceEndpoint.host}")
@@ -34,7 +34,7 @@ class Controller(val mainActivity: MainActivity) {
     private suspend fun handleIncomingMessage(
         protocolInstance: PresentationExchangeVerifierProtocol,
         message: LdObject,
-        updateState: (State) -> Unit
+        updateState: (VerificationResult) -> Unit
     ): Boolean {
         val type = message.type ?: return true //ignore
         return when {
@@ -104,47 +104,80 @@ class Controller(val mainActivity: MainActivity) {
     private suspend fun handlePresentationSubmit(
         protocolInstance: PresentationExchangeVerifierProtocol,
         presentationSubmit: PresentationSubmit,
-        updateState: (State) -> Unit
+        updateState: (VerificationResult) -> Unit
     ): Boolean {
-        val isSuccess = verifyPresentation(presentationSubmit.presentation)
-        updateState(if (isSuccess) State.APPROVED else State.DENIED)
+        val verificationResult = verifyPresentation(presentationSubmit.presentation)
+        updateState(verificationResult)
         return false
     }
 
     private fun handleClose(
         protocolInstance: PresentationExchangeVerifierProtocol,
         close: Close,
-        updateState: (State) -> Unit
+        updateState: (VerificationResult) -> Unit
     ): Boolean {
-        updateState(State.DENIED)
+        updateState(VerificationResult(message = "cancelled before receiving certificate"))
         return false
     }
 
-    private fun verifyPresentation(presentation: Presentation): Boolean {
+    private fun verifyPresentation(presentation: Presentation): VerificationResult {
+        val verificationResult = VerificationResult()
         val credential = presentation.verifiableCredential.get(0)
-        if (!(credential.type.contains("VaccinationCertificate"))) return false // is vaccination certificate?
-        if (!(credential.credentialSubject?.get("order")?.jsonPrimitive?.content == "3/3")) return false // is patient fully vaccinated?
+        if (!(credential.type.contains("VaccinationCertificate")))
+            return verificationResult.apply {
+                message = "no vaccination certificate"
+            }
+        verificationResult.isVaccinationCertificate = true
+        if (!(credential.credentialSubject?.get("order")?.jsonPrimitive?.content == "3/3"))
+            return verificationResult.apply {
+                message = "patient isn't fully vaccinated"
+            }
+        verificationResult.isFullVaccinated = true
+        if (credential.issuer.toString() != Settings.trustedIssuer.toString())
+            return verificationResult.apply {
+                message = "no trusted issuer"
+            }
+        verificationResult.isTrustedIssuer = true
+
+        if (!(credential.verify()))
+            return verificationResult.apply { message = "verification of assertion proof failed" }
+        verificationResult.isAssertionVerifiedSuccessfully = true
         val holderId = credential
             .credentialSubject
             ?.get("recipient")?.jsonObject
             ?.get("id")?.jsonPrimitive?.content
             ?.let { URI.create(it) }
-            ?: return false // holder id required
+            ?: return verificationResult.apply {
+                message = "holder id required"
+            }
         val authProofCreator = presentation
             .proof
             ?.get(0)
             ?.creator
-            ?: return false
+            ?: return verificationResult.apply {
+                message = "auth proof creator missing"
+            }
         val authProofVerificationMethod = presentation
             .proof
             ?.get(0)
             ?.verificationMethod
-            ?: return false
-        if (!(holderId == authProofCreator)) return false
-        if (!(holderId.schemeSpecificPart == authProofVerificationMethod.schemeSpecificPart)) return false
-        if (!(credential.verify())) return false // verify assertion proof
-        if (!(presentation.verify())) return false // verify authentication proof
-        return true
+            ?: return verificationResult.apply {
+                message = "auth proof verification method missing"
+            }
+        if (!(holderId == authProofCreator))
+            return verificationResult.apply {
+                message = "presentation wasn't created by holder"
+            }
+        if (!(holderId.schemeSpecificPart == authProofVerificationMethod.schemeSpecificPart))
+            return verificationResult.apply {
+                message = "invalid verification method - scheme mismatch"
+            }
+        if (!(presentation.verify()))
+            return verificationResult.apply {
+                message = "auth proof verification failed"
+            }
+        verificationResult.isAuthenticationVerifiedSuccessfully = true
+        return verificationResult
     }
 
 }

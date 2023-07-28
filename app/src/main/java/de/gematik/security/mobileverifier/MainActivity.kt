@@ -7,6 +7,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
@@ -19,6 +20,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -29,7 +31,6 @@ import de.gematik.security.credentialExchangeLib.json
 import de.gematik.security.credentialExchangeLib.protocols.Invitation
 import de.gematik.security.mobileverifier.ui.theme.MobileVerifierTheme
 import java.net.URI
-import java.net.URL
 import java.util.*
 
 internal val TAG = MainActivity::class.java.name
@@ -57,24 +58,80 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-enum class State {
-    UNKNOWN,
-    APPROVED,
-    DENIED
+data class VerificationResult(
+    var isVaccinationCertificate: Boolean = false,
+    var isFullVaccinated: Boolean = false,
+    var isTrustedIssuer: Boolean = false,
+    var isAssertionVerifiedSuccessfully: Boolean = false,
+    var isAuthenticationVerifiedSuccessfully: Boolean = false,
+    var message: String = ""
+) {
+    fun isSuccess() = isVaccinationCertificate &&
+            isFullVaccinated &&
+            isTrustedIssuer &&
+            isAssertionVerifiedSuccessfully &&
+            isAuthenticationVerifiedSuccessfully
 }
 
 @Composable
 fun QrCodeScan() {
     Box {
-        val isVaccinationValid = remember { mutableStateOf(State.UNKNOWN) }
+        val verificationResult = remember { mutableStateOf<VerificationResult?>(null) }
 
-        Text(
-            "Vaccination Certificate",
-            Modifier
-                .padding(20.dp)
-                .align(Alignment.TopCenter),
-            style = typography.headlineLarge
-        )
+        Column(
+            Modifier.align(Alignment.TopCenter),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                "Admission Control",
+                style = typography.headlineLarge
+            )
+            if (verificationResult.value == null) {
+                Text(
+                    "(full vaccination required)",
+                    style = typography.bodyLarge
+                )
+            } else {
+                if(verificationResult.value?.isVaccinationCertificate == true){
+                    Text(
+                        "vaccination certificate ✓",
+                        style = typography.bodyLarge
+                    )
+                }
+                if(verificationResult.value?.isFullVaccinated == true){
+                    Text(
+                        "fully vaccinated (3/3) ✓",
+                        style = typography.bodyLarge
+                    )
+                }
+                if(verificationResult.value?.isTrustedIssuer == true){
+                    Text(
+                        "trusted issuer ✓",
+                        style = typography.bodyLarge
+                    )
+                }
+                if(verificationResult.value?.isAssertionVerifiedSuccessfully == true){
+                    Text(
+                        "assertion verified ✓",
+                        style = typography.bodyLarge
+                    )
+                }
+                if(verificationResult.value?.isVaccinationCertificate == true){
+                    Text(
+                        "holder authenticated ✓",
+                        style = typography.bodyLarge
+                    )
+                }
+                verificationResult.value?.message?.let {
+                    Text(
+                        color = Color.Red,
+                        text = it,
+                        style = typography.bodyLarge
+                    )
+                }
+            }
+        }
+
         val scanLauncher = rememberLauncherForActivityResult(
             contract = ScanContract(),
             onResult = { result ->
@@ -83,7 +140,7 @@ fun QrCodeScan() {
                 if (oob.isNotEmpty()) {
                     controller.acceptInvitation(
                         invitation = json.decodeFromString<Invitation>(String(Base64.getDecoder().decode(oob))),
-                        updateState = { state -> isVaccinationValid.value = state }
+                        updateState = { verificationResult.value = it }
                     )
                 }
             }
@@ -91,10 +148,10 @@ fun QrCodeScan() {
 
         Image(
             painterResource(
-                when (isVaccinationValid.value) {
-                    State.APPROVED -> R.drawable.approved
-                    State.UNKNOWN -> R.drawable.unknown
-                    State.DENIED -> R.drawable.denied
+                when {
+                    verificationResult.value?.isSuccess() == true -> R.drawable.approved
+                    verificationResult.value?.isSuccess() == false -> R.drawable.denied
+                    else -> R.drawable.unknown
                 }
             ),
             "denied",
@@ -104,7 +161,7 @@ fun QrCodeScan() {
 
         Button(
             onClick = {
-                isVaccinationValid.value = State.UNKNOWN
+                verificationResult.value = null
                 scanLauncher.launch(
                     ScanOptions().apply {
                         setDesiredBarcodeFormats(BarcodeFormat.QR_CODE.name)
