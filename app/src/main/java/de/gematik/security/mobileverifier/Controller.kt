@@ -22,7 +22,9 @@ class Controller(val mainActivity: MainActivity) {
                 ) {
                     it.sendInvitation(invitation)
                     while (true) {
-                        val message = it.receive()
+                        val message = runCatching {
+                            it.receive()
+                        }.onFailure { Log.d(TAG, "exception: ${it.message}") }.getOrNull() ?: break
                         Log.d(TAG, "received: ${message.type}")
                         if (!handleIncomingMessage(it, message, updateState)) break
                     }
@@ -45,7 +47,8 @@ class Controller(val mainActivity: MainActivity) {
             ) // close connection
             type.contains("PresentationOffer") -> handlePresentationOffer(
                 protocolInstance,
-                message as PresentationOffer
+                message as PresentationOffer,
+                updateState
             )
 
             type.contains("PresentationSubmit") -> handlePresentationSubmit(
@@ -60,16 +63,23 @@ class Controller(val mainActivity: MainActivity) {
 
     private suspend fun handlePresentationOffer(
         protocolInstance: PresentationExchangeVerifierProtocol,
-        presentationOffer: PresentationOffer
+        presentationOffer: PresentationOffer,
+        updateState: (VerificationResult) -> Unit
     ): Boolean {
         if (  // only vaccination certificates are accepted
             !presentationOffer.inputDescriptor.frame.type.contains("VaccinationCertificate")
-        ) return false
+        ) {
+            updateState(VerificationResult(message = "no vaccination certificate"))
+            return false
+        }
         val credentialSubject = presentationOffer.inputDescriptor.frame.credentialSubject
         if ( // vaccination needs to be disclosed
             credentialSubject?.get("@explicit")?.jsonPrimitive?.boolean == true &&
             !credentialSubject.containsKey("order")
-        ) return false
+        ) {
+            updateState(VerificationResult(message = "vaccination status needs to be disclosed"))
+            return false
+        }
         val frame = Credential(
             // frame requesting vaccination status only
             atContext = Credential.DEFAULT_JSONLD_CONTEXTS + listOf(URI.create("https://w3id.org/vaccination/v1")),
@@ -116,7 +126,7 @@ class Controller(val mainActivity: MainActivity) {
         close: Close,
         updateState: (VerificationResult) -> Unit
     ): Boolean {
-        updateState(VerificationResult(message = "cancelled before receiving certificate"))
+        updateState(VerificationResult(message = "no sufficient credential received"))
         return false
     }
 

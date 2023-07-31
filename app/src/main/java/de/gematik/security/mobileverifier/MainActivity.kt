@@ -3,6 +3,7 @@ package de.gematik.security.mobileverifier
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
+import androidx.activity.addCallback
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -37,9 +38,7 @@ internal val TAG = MainActivity::class.java.name
 
 internal lateinit var controller: Controller
 
-
 class MainActivity : ComponentActivity() {
-
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -77,6 +76,24 @@ data class VerificationResult(
 fun QrCodeScan() {
     Box {
         val verificationResult = remember { mutableStateOf<VerificationResult?>(null) }
+
+        val scanLauncher = rememberLauncherForActivityResult(
+            contract = ScanContract(),
+            onResult = { result ->
+                Log.i(TAG, "scanned code: ${result.contents}")
+                result.contents?.let{
+                    runCatching {
+                        val oob = URI.create(it).query.substringAfter("oob=", "").substringBefore("&")
+                        if (oob.isNotEmpty()) {
+                            controller.acceptInvitation(
+                                invitation = json.decodeFromString<Invitation>(String(Base64.getDecoder().decode(oob))),
+                                updateState = { verificationResult.value = it }
+                            )
+                        }
+                    }.onFailure { Log.i(TAG, "exception reading qr-code: ${it.message}") }
+                }
+            }
+        )
 
         Column(
             Modifier.align(Alignment.TopCenter),
@@ -131,20 +148,6 @@ fun QrCodeScan() {
                 }
             }
         }
-
-        val scanLauncher = rememberLauncherForActivityResult(
-            contract = ScanContract(),
-            onResult = { result ->
-                Log.i(TAG, "scanned code: ${result.contents}")
-                val oob = URI.create(result.contents).query.substringAfter("oob=", "").substringBefore("&")
-                if (oob.isNotEmpty()) {
-                    controller.acceptInvitation(
-                        invitation = json.decodeFromString<Invitation>(String(Base64.getDecoder().decode(oob))),
-                        updateState = { verificationResult.value = it }
-                    )
-                }
-            }
-        )
 
         Image(
             painterResource(
