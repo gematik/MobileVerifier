@@ -83,8 +83,8 @@ class Controller(val mainActivity: MainActivity) {
         val frame = Credential(
             // frame requesting vaccination status only
             atContext = Credential.DEFAULT_JSONLD_CONTEXTS + listOf(URI.create("https://w3id.org/vaccination/v1")),
-            type = listOf("VaccinationCertificate"),
-            credentialSubject = JsonObject(
+            type = Credential.DEFAULT_JSONLD_TYPES + listOf("VaccinationCertificate"),
+            credentialSubject = JsonLdObject(
                 mapOf(
                     "@explicit" to JsonPrimitive(true),
                     "@requireAll" to JsonPrimitive(true),
