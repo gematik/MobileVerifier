@@ -2,32 +2,32 @@ package de.gematik.security.mobileverifier
 
 import android.util.Log
 import androidx.lifecycle.lifecycleScope
-import de.gematik.security.credentialExchangeLib.connection.WsConnection
+import de.gematik.security.credentialExchangeLib.connection.websocket.WsConnection
+import de.gematik.security.credentialExchangeLib.extensions.createUri
 import de.gematik.security.credentialExchangeLib.protocols.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
 import java.net.URI
+import java.util.*
 
 class Controller(val mainActivity: MainActivity) {
     val TAG = Controller::class.java.name
 
     fun acceptInvitation(invitation: Invitation, updateState: (VerificationResult) -> Unit) {
+        val serviceEndpoint = invitation.service[0].serviceEndpoint
         mainActivity.lifecycleScope.launch {
-            invitation.service[0].serviceEndpoint?.let { serviceEndpoint ->
-                Log.d(TAG, "invitation accepted from ${serviceEndpoint.host}")
-                PresentationExchangeVerifierProtocol.connect(
-                    WsConnection,
-                    host = serviceEndpoint.host,
-                    serviceEndpoint.port,
-                ) {
-                    it.sendInvitation(invitation)
-                    while (true) {
-                        val message = runCatching {
-                            it.receive()
-                        }.onFailure { Log.d(TAG, "exception: ${it.message}") }.getOrNull() ?: break
-                        Log.d(TAG, "received: ${message.type}")
-                        if (!handleIncomingMessage(it, message, updateState)) break
-                    }
+            Log.d(TAG, "invitation accepted from ${serviceEndpoint.host}")
+            PresentationExchangeVerifierProtocol.connect(
+                WsConnection,
+                to = createUri(serviceEndpoint.host, serviceEndpoint.port),
+                invitationId = UUID.fromString(invitation.id)
+            ) {
+                while (true) {
+                    val message = runCatching {
+                        it.receive()
+                    }.onFailure { Log.d(TAG, "exception: ${it.message}") }.getOrNull() ?: break
+                    Log.d(TAG, "received: ${message.type}")
+                    if (!handleIncomingMessage(it, message, updateState)) break
                 }
             }
         }
