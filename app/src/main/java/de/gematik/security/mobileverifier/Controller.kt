@@ -2,25 +2,58 @@ package de.gematik.security.mobileverifier
 
 import android.util.Log
 import androidx.lifecycle.lifecycleScope
+import de.gematik.security.credentialExchangeLib.connection.DidCommV2OverHttp.DidCommV2OverHttpConnection
+import de.gematik.security.credentialExchangeLib.connection.DidCommV2OverHttp.createPeerDID
+import de.gematik.security.credentialExchangeLib.connection.Invitation
 import de.gematik.security.credentialExchangeLib.connection.websocket.WsConnection
-import de.gematik.security.credentialExchangeLib.extensions.createUri
 import de.gematik.security.credentialExchangeLib.protocols.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
+import java.net.Inet4Address
+import java.net.NetworkInterface
 import java.net.URI
-import java.util.*
+import java.security.InvalidParameterException
 
 class Controller(val mainActivity: MainActivity) {
     val TAG = Controller::class.java.name
 
+    val networkInterface =
+        NetworkInterface.getNetworkInterfaces().toList().first { it.name.lowercase().startsWith("wlan") }
+    val address = networkInterface.inetAddresses.toList().first { it is Inet4Address }
+
     fun acceptInvitation(invitation: Invitation, updateState: (VerificationResult) -> Unit) {
-        val serviceEndpoint = invitation.service[0].serviceEndpoint
+        val (connectionFactory, to, from) = when (invitation.from.scheme) {
+            "ws", "wss" -> {
+                Triple(
+                    WsConnection,
+                    invitation.from,
+                    null
+                )
+            }
+
+            "did" -> {
+                Triple(
+                    DidCommV2OverHttpConnection,
+                    invitation.from,
+                    URI.create(
+                        createPeerDID(
+                            serviceEndpoint = URI("http", null, address.hostAddress, 9095, "/didcomm", null, null).toString()
+                        )
+                    )
+                )
+            }
+
+            else -> {
+                throw InvalidParameterException("unsupported URI scheme: ${invitation.from.scheme}")
+            }
+        }
         mainActivity.lifecycleScope.launch {
-            Log.d(TAG, "invitation accepted from ${serviceEndpoint.host}")
+            Log.d(TAG, "invitation accepted from ${to}")
             PresentationExchangeVerifierProtocol.connect(
-                WsConnection,
-                to = createUri(serviceEndpoint.host, serviceEndpoint.port),
-                invitationId = UUID.fromString(invitation.id)
+                connectionFactory,
+                to = to,
+                from = from,
+                invitationId = invitation.id
             ) {
                 while (true) {
                     val message = runCatching {
@@ -100,14 +133,16 @@ class Controller(val mainActivity: MainActivity) {
                 )
             ),
         )
-        protocolInstance.requestPresentation(
-            PresentationRequest(
-                inputDescriptor = Descriptor(
-                    presentationOffer.inputDescriptor.id,
-                    frame
-                )
+        val presentationRequest = PresentationRequest(
+            inputDescriptor = Descriptor(
+                presentationOffer.inputDescriptor.id,
+                frame
             )
         )
+        protocolInstance.requestPresentation(
+            presentationRequest
+        )
+        Log.d(TAG, "sent: ${presentationRequest.type}")
         return true
     }
 
@@ -117,6 +152,7 @@ class Controller(val mainActivity: MainActivity) {
         updateState: (VerificationResult) -> Unit
     ): Boolean {
         val verificationResult = verifyPresentation(presentationSubmit.presentation)
+        Log.d(TAG, "presentation verified: ${verificationResult}")
         updateState(verificationResult)
         return false
     }

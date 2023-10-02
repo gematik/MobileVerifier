@@ -3,7 +3,6 @@ package de.gematik.security.mobileverifier
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
-import androidx.activity.addCallback
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.Image
@@ -28,8 +27,8 @@ import androidx.compose.ui.unit.dp
 import com.google.zxing.BarcodeFormat
 import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
+import de.gematik.security.credentialExchangeLib.connection.Invitation
 import de.gematik.security.credentialExchangeLib.json
-import de.gematik.security.credentialExchangeLib.protocols.Invitation
 import de.gematik.security.mobileverifier.ui.theme.MobileVerifierTheme
 import java.net.URI
 import java.util.*
