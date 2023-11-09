@@ -6,6 +6,7 @@ import de.gematik.security.credentialExchangeLib.connection.DidCommV2OverHttp.Di
 import de.gematik.security.credentialExchangeLib.connection.DidCommV2OverHttp.createPeerDID
 import de.gematik.security.credentialExchangeLib.connection.Invitation
 import de.gematik.security.credentialExchangeLib.connection.websocket.WsConnection
+import de.gematik.security.credentialExchangeLib.json
 import de.gematik.security.credentialExchangeLib.protocols.*
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
@@ -13,6 +14,7 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 import java.net.URI
 import java.security.InvalidParameterException
+import java.util.UUID
 
 class Controller(val mainActivity: MainActivity) {
     val TAG = Controller::class.java.name
@@ -37,7 +39,15 @@ class Controller(val mainActivity: MainActivity) {
                     invitation.from,
                     URI.create(
                         createPeerDID(
-                            serviceEndpoint = URI("http", null, address.hostAddress, 9095, "/didcomm", null, null).toString()
+                            serviceEndpoint = URI(
+                                "http",
+                                null,
+                                address.hostAddress,
+                                9095,
+                                "/didcomm",
+                                null,
+                                null
+                            ).toString()
                         )
                     )
                 )
@@ -71,7 +81,7 @@ class Controller(val mainActivity: MainActivity) {
         message: LdObject,
         updateState: (VerificationResult) -> Unit
     ): Boolean {
-        val type = message.type ?: return true //ignore
+        val type = message.type
         return when {
             type.contains("Close") -> handleClose(
                 protocolInstance,
@@ -99,50 +109,99 @@ class Controller(val mainActivity: MainActivity) {
         presentationOffer: PresentationOffer,
         updateState: (VerificationResult) -> Unit
     ): Boolean {
-        if (  // only vaccination certificates are accepted
-            !presentationOffer.inputDescriptor.frame.type.contains("VaccinationCertificate")
-        ) {
-            updateState(VerificationResult(message = "no vaccination certificate"))
+        // vaccination status and personal id (portrait) are required
+        val vaccinationDescriptor =
+            presentationOffer.inputDescriptor.firstOrNull { it.frame.type.contains("VaccinationCertificate") }
+        if (vaccinationDescriptor == null) {
+            updateState(VerificationResult(message = "no vaccination certificate descriptor"))
             return false
         }
-        val credentialSubject = presentationOffer.inputDescriptor.frame.credentialSubject
-        if ( // vaccination needs to be disclosed
-            credentialSubject?.get("@explicit")?.jsonPrimitive?.boolean == true &&
-            !credentialSubject.containsKey("order")
+        val vaccinationCredentialSubject = vaccinationDescriptor.frame.credentialSubject
+        if ( // check if holder allows disclosure of vaccination status
+            vaccinationCredentialSubject?.get("@explicit")?.jsonPrimitive?.boolean == true &&
+            !vaccinationCredentialSubject.containsKey("order")
         ) {
             updateState(VerificationResult(message = "vaccination status needs to be disclosed"))
             return false
         }
-        val frame = Credential(
-            // frame requesting vaccination status only
-            atContext = Credential.DEFAULT_JSONLD_CONTEXTS + listOf(URI.create("https://w3id.org/vaccination/v1")),
-            type = Credential.DEFAULT_JSONLD_TYPES + listOf("VaccinationCertificate"),
-            credentialSubject = JsonLdObject(
-                mapOf(
-                    "@explicit" to JsonPrimitive(true),
-                    "@requireAll" to JsonPrimitive(true),
-                    "type" to JsonArray(listOf(JsonPrimitive("VaccinationEvent"))),
-                    "order" to JsonArray(listOf(JsonPrimitive("3/3"))),
-                    "recipient" to JsonObject(
-                        mapOf(
-                            "@explicit" to JsonPrimitive(true),
-                            "type" to JsonArray(listOf(JsonPrimitive("VaccineRecipient"))),
-                            "id" to JsonObject(mapOf())
-                        )
+        val insuranceDescriptor =
+            presentationOffer.inputDescriptor.firstOrNull { it.frame.type.contains("InsuranceCertificate") }
+        if (insuranceDescriptor == null) {
+            updateState(VerificationResult(message = "no insurance certificate descriptor"))
+            return false
+        }
+        val insuranceCredentialSubject = insuranceDescriptor.frame.credentialSubject?.jsonContent
+        // check if holder allows disclosure of portrait
+        if (insuranceCredentialSubject?.get("@explicit")?.jsonPrimitive?.boolean == true) {
+            if (insuranceCredentialSubject.contains("insurant")) {
+                val insurant = insuranceCredentialSubject["insurant"]?.jsonObject
+                if (!(insurant?.get("@explicit")?.jsonPrimitive?.boolean == true) &&
+                    insurant?.contains("portrait") == false
+                ) {
+                    updateState(VerificationResult(message = "portrait needs to be disclosed"))
+                    return false
+                }
+            } else {
+                updateState(VerificationResult(message = "portrait needs to be disclosed"))
+                return false
+            }
+        }
+        val presentationRequest = PresentationRequest(
+            inputDescriptor = listOf(
+                Descriptor(
+                    id = UUID.randomUUID().toString(),
+                    frame = Credential(
+                        // frame requesting vaccination status and holder id
+                        atContext = Credential.DEFAULT_JSONLD_CONTEXTS + listOf(URI.create("https://w3id.org/vaccination/v1")),
+                        type = Credential.DEFAULT_JSONLD_TYPES + listOf("VaccinationCertificate"),
+                        credentialSubject = JsonLdObject(
+                            mapOf(
+                                "@explicit" to JsonPrimitive(true),
+                                "@requireAll" to JsonPrimitive(true),
+                                "type" to JsonArray(listOf(JsonPrimitive("VaccinationEvent"))),
+                                "order" to JsonArray(listOf(JsonPrimitive("3/3"))),
+                                "recipient" to JsonObject(
+                                    mapOf(
+                                        "@explicit" to JsonPrimitive(true),
+                                        "type" to JsonArray(listOf(JsonPrimitive("VaccineRecipient"))),
+                                        "id" to JsonObject(mapOf()) // holder id
+                                    )
+                                )
+                            )
+                        ),
+                    )
+                ),
+                Descriptor(
+                    id = UUID.randomUUID().toString(),
+                    frame = Credential(
+                        // frame requesting portrait and holder id
+                        atContext = Credential.DEFAULT_JSONLD_CONTEXTS + listOf(URI.create("https://gematik.de/vsd/v1")),
+                        type = Credential.DEFAULT_JSONLD_TYPES + listOf("InsuranceCertificate"),
+                        credentialSubject = JsonLdObject(
+                            mapOf(
+                                "@explicit" to JsonPrimitive(true),
+                                "@requireAll" to JsonPrimitive(true),
+                                "type" to JsonArray(listOf(JsonPrimitive("Insurance"))),
+                                "id" to JsonObject(mapOf()), // holder id
+                                "insurant" to JsonObject(
+                                    mapOf(
+                                        "@explicit" to JsonPrimitive(true),
+                                        "type" to JsonArray(listOf(JsonPrimitive("Insurant"))),
+                                        "portrait" to JsonObject(mapOf())
+                                    )
+                                )
+                            )
+                        ),
                     )
                 )
-            ),
-        )
-        val presentationRequest = PresentationRequest(
-            inputDescriptor = Descriptor(
-                presentationOffer.inputDescriptor.id,
-                frame
             )
         )
         protocolInstance.requestPresentation(
             presentationRequest
         )
-        Log.d(TAG, "sent: ${presentationRequest.type}")
+        Log.d(
+            TAG, "sent: ${presentationRequest.type}"
+        )
         return true
     }
 
@@ -168,33 +227,76 @@ class Controller(val mainActivity: MainActivity) {
 
     private fun verifyPresentation(presentation: Presentation): VerificationResult {
         val verificationResult = VerificationResult()
-        val credential = presentation.verifiableCredential.get(0)
-        if (!(credential.type.contains("VaccinationCertificate")))
+        if(presentation.verifiableCredential.size != 2){
             return verificationResult.apply {
-                message = "no vaccination certificate"
+                message = "two credentials expected, but ${presentation.verifiableCredential.size} received"
+            }
+        }
+        val vaccinationCredential = presentation.verifiableCredential.get(0)
+        val insuranceCredential = presentation.verifiableCredential.get(1)
+
+        if (!(vaccinationCredential.type.contains("VaccinationCertificate")))
+            return verificationResult.apply {
+                message = "vaccination credential wrong type"
             }
         verificationResult.isVaccinationCertificate = true
-        if (!(credential.credentialSubject?.get("order")?.jsonPrimitive?.content == "3/3"))
+
+        if (vaccinationCredential.credentialSubject?.get("order")?.jsonPrimitive?.content != "3/3")
             return verificationResult.apply {
                 message = "patient isn't fully vaccinated"
             }
         verificationResult.isFullVaccinated = true
-        if (credential.issuer.toString() != Settings.trustedIssuer.toString())
+
+        if (!(insuranceCredential.type.contains("InsuranceCertificate")))
             return verificationResult.apply {
-                message = "no trusted issuer"
+                message = "insurance credential wrong type"
+            }
+        verificationResult.isInsuranceCertificate = true
+
+        if (vaccinationCredential.issuer.toString() != Settings.trustedIssuer.toString())
+            return verificationResult.apply {
+                message = "vaccination trusted issuer verification failed"
+            }
+        if (insuranceCredential.issuer.toString() != Settings.trustedIssuer.toString())
+            return verificationResult.apply {
+                message = "insurance trusted issuer verification failed"
             }
         verificationResult.isTrustedIssuer = true
-
-        if (!(credential.verify()))
-            return verificationResult.apply { message = "verification of assertion proof failed" }
+        verificationResult.portrait = insuranceCredential.credentialSubject
+            ?.get("insurant")?.jsonObject
+            ?.get("portrait")?.jsonPrimitive?.content
+        if(verificationResult.portrait == null){
+            verificationResult.message = "portrait missing"
+        }
+        if (!(vaccinationCredential.verify()))
+            return verificationResult.apply {
+                message = "verification of assertion proof (vaccination) failed"
+            }
+        if (!(vaccinationCredential.verify()))
+            return verificationResult.apply {
+                message = "verification of assertion proof (insurance) failed"
+            }
         verificationResult.isAssertionVerifiedSuccessfully = true
-        val holderId = credential
+
+        val vaccinationHolderId = vaccinationCredential
             .credentialSubject
             ?.get("recipient")?.jsonObject
             ?.get("id")?.jsonPrimitive?.content
             ?.let { URI.create(it) }
             ?: return verificationResult.apply {
-                message = "holder id required"
+                message = "vaccination holder id required"
+            }
+        val insuranceHolderId = insuranceCredential
+            .credentialSubject
+            ?.get("insurant")?.jsonObject
+            ?.get("id")?.jsonPrimitive?.content
+            ?.let { URI.create(it) }
+            ?: return verificationResult.apply {
+                message = "insurance holder id required"
+            }
+        if (vaccinationHolderId != insuranceHolderId)
+            return verificationResult.apply {
+                message = "vaccination holder and insurance holder don't match"
             }
         val authProofCreator = presentation
             .proof
@@ -210,11 +312,11 @@ class Controller(val mainActivity: MainActivity) {
             ?: return verificationResult.apply {
                 message = "auth proof verification method missing"
             }
-        if (!(holderId == authProofCreator))
+        if (vaccinationHolderId != authProofCreator)
             return verificationResult.apply {
                 message = "presentation wasn't created by holder"
             }
-        if (!(holderId.schemeSpecificPart == authProofVerificationMethod.schemeSpecificPart))
+        if (vaccinationHolderId.schemeSpecificPart != authProofVerificationMethod.schemeSpecificPart)
             return verificationResult.apply {
                 message = "invalid verification method - scheme mismatch"
             }

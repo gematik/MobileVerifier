@@ -1,15 +1,16 @@
 package de.gematik.security.mobileverifier
 
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.*
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MaterialTheme.typography
@@ -21,6 +22,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -59,10 +62,12 @@ class MainActivity : ComponentActivity() {
 data class VerificationResult(
     var isVaccinationCertificate: Boolean = false,
     var isFullVaccinated: Boolean = false,
+    var isInsuranceCertificate: Boolean = false,
+    var portrait: String? = null,
     var isTrustedIssuer: Boolean = false,
     var isAssertionVerifiedSuccessfully: Boolean = false,
     var isAuthenticationVerifiedSuccessfully: Boolean = false,
-    var message: String = ""
+    var message: String? = null
 ) {
     fun isSuccess() = isVaccinationCertificate &&
             isFullVaccinated &&
@@ -80,7 +85,7 @@ fun QrCodeScan() {
             contract = ScanContract(),
             onResult = { result ->
                 Log.i(TAG, "scanned code: ${result.contents}")
-                result.contents?.let{
+                result.contents?.let {
                     runCatching {
                         val oob = URI.create(it).query.substringAfter("oob=", "").substringBefore("&")
                         if (oob.isNotEmpty()) {
@@ -108,31 +113,43 @@ fun QrCodeScan() {
                     style = typography.bodyLarge
                 )
             } else {
-                if(verificationResult.value?.isVaccinationCertificate == true){
+                if (verificationResult.value?.isVaccinationCertificate == true) {
                     Text(
                         "vaccination certificate ✓",
                         style = typography.bodyLarge
                     )
                 }
-                if(verificationResult.value?.isFullVaccinated == true){
+                if (verificationResult.value?.isFullVaccinated == true) {
                     Text(
                         "fully vaccinated (3/3) ✓",
                         style = typography.bodyLarge
                     )
                 }
-                if(verificationResult.value?.isTrustedIssuer == true){
+                if (verificationResult.value?.isInsuranceCertificate == true) {
                     Text(
-                        "trusted issuer ✓",
+                        "insurance certificate ✓",
                         style = typography.bodyLarge
                     )
                 }
-                if(verificationResult.value?.isAssertionVerifiedSuccessfully == true){
+                if (verificationResult.value?.portrait != null) {
                     Text(
-                        "assertion verified ✓",
+                        "portrait ✓",
                         style = typography.bodyLarge
                     )
                 }
-                if(verificationResult.value?.isVaccinationCertificate == true){
+                if (verificationResult.value?.isTrustedIssuer == true) {
+                    Text(
+                        "trusted issuers ✓",
+                        style = typography.bodyLarge
+                    )
+                }
+                if (verificationResult.value?.isAssertionVerifiedSuccessfully == true) {
+                    Text(
+                        "assertions verified ✓",
+                        style = typography.bodyLarge
+                    )
+                }
+                if (verificationResult.value?.isVaccinationCertificate == true) {
                     Text(
                         "holder authenticated ✓",
                         style = typography.bodyLarge
@@ -148,7 +165,24 @@ fun QrCodeScan() {
             }
         }
 
-        Image(
+        verificationResult.value?.portrait?.let {
+            Column(
+                Modifier.align(Alignment.Center),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "Holder Portrait",
+                    style = typography.headlineMedium
+                )
+                val imageData = Base64.getDecoder().decode(it)
+                Image(
+                    BitmapFactory.decodeByteArray(imageData, 0, imageData.size, null).asImageBitmap(),
+                    contentDescription = "portrait",
+                    modifier = Modifier
+                        .size(300.dp)
+                )
+            }
+        } ?: Image(
             painterResource(
                 when {
                     verificationResult.value?.isSuccess() == true -> R.drawable.approved
@@ -156,7 +190,7 @@ fun QrCodeScan() {
                     else -> R.drawable.unknown
                 }
             ),
-            "denied",
+            "status",
             Modifier
                 .align(Alignment.Center)
         )
