@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">MobileVerifier</string>
+    <string name="servicedesc">HCE T4T</string>
+    <string name="aiddescription">NDEF TAG application</string>
 </resources>

@@ -3,6 +3,7 @@
           xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.NFC"/>
 
     <application
             android:allowBackup="true"
@@ -17,6 +18,7 @@
                 android:name=".MainActivity"
                 android:exported="true"
                 android:label="@string/app_name"
+                android:screenOrientation="portrait"
                 android:theme="@style/Theme.MobileVerifier">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
@@ -28,6 +30,21 @@
                 android:name="com.journeyapps.barcodescanner.CaptureActivity"
                 android:screenOrientation="portrait"
                 tools:replace="screenOrientation" />
+        <service android:name=".t4thost.T4tHostApduService"
+                 android:exported="true"
+                 android:enabled="true"
+                 android:permission="android.permission.BIND_NFC_SERVICE">
+
+            <!-- Intent filter indicating that we support card emulation. -->
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+            </intent-filter>
+            <!-- Required XML configuration file, listing the AIDs that we are emulating cards
+                 for. This defines what protocols our card emulation service supports. -->
+            <meta-data android:name="android.nfc.cardemulation.host_apdu_service"
+                       android:resource="@xml/host_apdu_service"/>
+        </service>
     </application>
 
 </manifest>
