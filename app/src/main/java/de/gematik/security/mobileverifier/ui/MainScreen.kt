@@ -32,8 +32,8 @@ import com.journeyapps.barcodescanner.ScanOptions
 import de.gematik.security.credentialExchangeLib.connection.Invitation
 import de.gematik.security.credentialExchangeLib.json
 import de.gematik.security.mobileverifier.R
-import de.gematik.security.mobileverifier.TAG
 import de.gematik.security.mobileverifier.controller
+import de.gematik.security.mobileverifier.tag
 import de.gematik.security.mobileverifier.ui.theme.MobileVerifierTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -41,6 +41,7 @@ import kotlinx.coroutines.withContext
 import java.net.URI
 import java.util.*
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(mainViewModel: MainViewModel = viewModel()) {
     val coroutineScope = rememberCoroutineScope()
@@ -49,25 +50,27 @@ fun MainScreen(mainViewModel: MainViewModel = viewModel()) {
         val scanLauncher = rememberLauncherForActivityResult(
             contract = ScanContract(),
             onResult = { result ->
-                Log.i(TAG, "scanned code: ${result.contents}")
                 result.contents?.let {
                     runCatching {
                         val oob = URI.create(it).query.substringAfter("oob=", "").substringBefore("&")
                         if (oob.isNotEmpty()) {
+                            Log.i(tag, "Qr code scanned: $oob")
                             coroutineScope.launch {
-                                withContext(Dispatchers.IO){
+                                withContext(Dispatchers.IO) {
                                     controller.acceptInvitation(
                                         invitation = json.decodeFromString<Invitation>(
                                             String(
                                                 Base64.getDecoder().decode(oob)
                                             )
-                                        ),
+                                        ).also {
+                                            Log.i(tag, "invitation = $it")
+                                        },
                                         updateState = { mainViewModel.setVerificationState(it) }
                                     )
                                 }
                             }
                         }
-                    }.onFailure { Log.i(TAG, "exception reading qr-code: ${it.message}") }
+                    }.onFailure { Log.i(tag, "exception reading qr-code: ${it.message}") }
                 }
             }
         )
@@ -136,7 +139,7 @@ fun MainScreen(mainViewModel: MainViewModel = viewModel()) {
                 }
                 verificationState.message?.let {
                     Text(
-                        color = if(verificationState.isSuccess()) Color(0,0xC0,0) else Color.Red,
+                        color = if (verificationState.isSuccess()) Color(0, 0xC0, 0) else Color.Red,
                         text = it,
                         style = MaterialTheme.typography.bodyLarge
                     )
@@ -144,40 +147,39 @@ fun MainScreen(mainViewModel: MainViewModel = viewModel()) {
             }
         }
 
-        Button(
-            onClick = {
-                mainViewModel.setVerificationState(
-                    verificationState.copy(
-                        progress = Progress.COMPLETED,
-                        isPortraitVerified = true,
-                    ).apply {
-                        message = " Access ${if(isSuccess()) "" else "not"} granted!"
-                    }
-                )
-            },
-            colors = ButtonDefaults.buttonColors(
-                containerColor = White
-            ),
-            modifier = Modifier
-                .padding(20.dp)
-                .align(Center)
+        Box(
+            Modifier.align(Center),
+            contentAlignment = Center
         ) {
             if (verificationState.progress == Progress.PORTRAIT_VERIFICATION) {
-                // show portrait
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
+                // show title and portrait
+                Button(
+                    onClick = {
+                        mainViewModel.setVerificationState(
+                            verificationState.copy(
+                                progress = Progress.COMPLETED,
+                                isPortraitVerified = true,
+                            ).apply {
+                                message = " Access ${if (isSuccess()) "" else "not"} granted!"
+                            }
+                        )
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = White
+                    ),
                 ) {
-                    Text(
-                        "Holder Portrait",
-                        style = MaterialTheme.typography.headlineMedium
+                    verificationState.portrait?.let {
+                        Image(
+                            it,
+                            contentDescription = "portrait",
+                            modifier = Modifier.size(250.dp)
+                        )
+                    } ?: Image(
+                        painterResource(R.drawable.portrait_blau_gematik),
+                        "unknown portrait",
+                        modifier = Modifier.size(250.dp)
                     )
-                    verificationState.portrait?.let{
-                    Image(
-                        it,
-                        contentDescription = "portrait",
-                        modifier = Modifier
-                            .size(300.dp)
-                    )} ?: Image(painterResource(R.drawable.unknown), "unknown portrait")
                 }
             } else {
                 Image(
@@ -189,6 +191,7 @@ fun MainScreen(mainViewModel: MainViewModel = viewModel()) {
                         }
                     ),
                     "status",
+                    modifier = Modifier.size(250.dp)
                 )
             }
         }

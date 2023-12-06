@@ -21,7 +21,7 @@ import java.security.InvalidParameterException
 import java.util.*
 
 class Controller(val mainActivity: MainActivity, val mainViewModel: MainViewModel) {
-    val TAG = Controller::class.java.name
+    private val tag = Controller::class.java.name
 
     suspend fun acceptInvitation(invitation: Invitation, updateState: (VerificationState) -> Unit) {
         val (connectionFactory, to, from) = when (invitation.from.scheme) {
@@ -46,7 +46,7 @@ class Controller(val mainActivity: MainActivity, val mainViewModel: MainViewMode
             }
         }
         mainActivity.lifecycleScope.launch {
-            Log.d(TAG, "invitation accepted from ${to}")
+            Log.i(tag, "invitation accepted from ${to}")
             updateState(VerificationState(progress = Progress.WAITING_FOR_OFFER))
             PresentationExchangeVerifierProtocol.connect(
                 connectionFactory,
@@ -57,8 +57,8 @@ class Controller(val mainActivity: MainActivity, val mainViewModel: MainViewMode
                 while (true) {
                     val message = runCatching {
                         it.receive()
-                    }.onFailure { Log.d(TAG, "exception: ${it.message}") }.getOrNull() ?: break
-                    Log.d(TAG, "received: ${message.type}")
+                    }.onFailure { Log.d(tag, "exception: ${it.message}") }.getOrNull() ?: break
+                    Log.i(tag, "received: ${message.type}")
                     if (!handleIncomingMessage(it, message, updateState)) break
                 }
             }
@@ -84,8 +84,8 @@ class Controller(val mainActivity: MainActivity, val mainViewModel: MainViewMode
         while (protocol.protocolState.state != PresentationExchangeVerifierProtocol.State.CLOSED) {
             val message = runCatching {
                 protocol.receive()
-            }.onFailure { Log.d(TAG, "exception: ${it.message}") }.getOrNull() ?: break
-            Log.d(TAG, "received: ${message.type}")
+            }.onFailure { Log.d(tag, "exception: ${it.message}") }.getOrNull() ?: break
+            Log.i(tag, "received: ${message.type}")
             if (!handleIncomingMessage(protocol, message) { mainViewModel.setVerificationState(it) }) break
         }
     }
@@ -214,9 +214,7 @@ private suspend fun handlePresentationOffer(
     protocolInstance.requestPresentation(
         presentationRequest
     )
-    Log.d(
-        TAG, "sent: ${presentationRequest.type}"
-    )
+    Log.i(tag, "sent: ${presentationRequest.type}")
     updateState(VerificationState( progress = Progress.WAITING_FOR_SUBMIT ))
     return true
 }
@@ -227,7 +225,7 @@ private suspend fun handlePresentationSubmit(
     updateState: (VerificationState) -> Unit
 ): Boolean {
     val verificationState = verifyPresentation(presentationSubmit.presentation)
-    Log.d(TAG, "presentation verified: ${verificationState}")
+    Log.i(tag, "presentation verified: ${verificationState}")
     updateState(verificationState)
     return false
 }

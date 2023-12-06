@@ -4,6 +4,7 @@ import android.content.Intent
 import android.nfc.NdefMessage
 import android.nfc.NdefRecord
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -14,10 +15,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.lifecycle.coroutineScope
-import androidx.lifecycle.viewmodel.compose.viewModel
 import de.gematik.security.credentialExchangeLib.connection.Invitation
 import de.gematik.security.credentialExchangeLib.protocols.GoalCode
-import de.gematik.security.mobileverifier.Settings.ownDid
 import de.gematik.security.mobileverifier.Settings.ownWsUri
 import de.gematik.security.mobileverifier.t4thost.T4tHostApduService
 import de.gematik.security.mobileverifier.t4thost.T4tHostApduService.Companion.EXTRA_NDEF_MESSAGE
@@ -27,11 +26,13 @@ import de.gematik.security.mobileverifier.ui.theme.MobileVerifierTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.net.URI
 import java.util.*
 
-internal val TAG = MainActivity::class.java.name
 
 internal lateinit var controller: Controller
+
+internal val tag = MainActivity::class.java.name
 
 class MainActivity : ComponentActivity() {
 
@@ -66,7 +67,16 @@ class MainActivity : ComponentActivity() {
         )
         intent.putExtra(EXTRA_NDEF_MESSAGE, ndefMesage)
         startService(intent)
-
+        Log.i(tag, "T4T card emulation service started: $ndefMesage")
+        val uriPrefix = ndefMesage.records[0].payload.get(0)
+        val uriData = ndefMesage.records[0].payload.drop(1).toByteArray()
+        Log.i(tag, "decoded payload: URI Prefix Code = $uriPrefix, URI Data = ${String(uriData)}")
+        val oob = Base64.getDecoder().decode(
+            URI.create(String(uriData)).query
+                .substringAfter("oob=", "")
+                .substringBefore("&")
+        )
+        Log.i(tag, "decoded oob: invitation = ${String(oob)}")
         // instantiate controller
         controller = Controller(this, mainViewModel)
         lifecycle.coroutineScope.launch {
@@ -74,6 +84,7 @@ class MainActivity : ComponentActivity() {
                 controller.start()
             }
         }
+        Log.i(tag, "controller started")
     }
 }
 
