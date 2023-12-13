@@ -14,7 +14,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.lifecycle.coroutineScope
+import androidx.lifecycle.lifecycleScope
 import de.gematik.security.credentialExchangeLib.connection.Invitation
 import de.gematik.security.credentialExchangeLib.protocols.GoalCode
 import de.gematik.security.mobileverifier.Settings.ownWsUri
@@ -25,18 +25,15 @@ import de.gematik.security.mobileverifier.ui.MainViewModel
 import de.gematik.security.mobileverifier.ui.theme.MobileVerifierTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.net.URI
 import java.util.*
-
-
-internal lateinit var controller: Controller
 
 internal val tag = MainActivity::class.java.name
 
 class MainActivity : ComponentActivity() {
 
-    val invitationId = UUID.randomUUID().toString()
+    private val invitationId = UUID.randomUUID().toString()
+    private lateinit var controller: Controller
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,12 +42,29 @@ class MainActivity : ComponentActivity() {
             MobileVerifierTheme {
                 // A surface container using the 'background' color from the theme
                 Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                    MainScreen(mainViewModel)
+                    MainScreen(mainViewModel, ::onQrCodeScanned)
                 }
             }
         }
+        // allow check in by tapping the devices to each other using NFC
+        activateNfcTag()
 
+        // start controller listening for incoming request (invitation acceptances via web socket or DIDComm)
+        startController(mainViewModel)
+
+    }
+
+    // called when user scans qr code
+    private fun onQrCodeScanned(invitation: Invitation) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            controller.acceptInvitation(invitation)
+        }
+    }
+
+    private fun activateNfcTag() {
         // start type 4 tag (t4t) card emulation
+        // goal: invites reader of tag to check in using vaccination certiticate
+        // goalCode: expects reader of tag to send presentation offer
         val intent = Intent(this, T4tHostApduService::class.java)
         val ndefMesage = NdefMessage(
             NdefRecord.createUri(
@@ -60,7 +74,7 @@ class MainActivity : ComponentActivity() {
                     goal = "Checkin event with VaccinationCertificate",
                     goalCode = GoalCode.OFFER_PRESENTATION,
                     from = ownWsUri
-                ).let{
+                ).let {
                     "https://my-wallet.me/ssi?oob=${it.toBase64()}"
                 }
             )
@@ -68,7 +82,7 @@ class MainActivity : ComponentActivity() {
         intent.putExtra(EXTRA_NDEF_MESSAGE, ndefMesage)
         startService(intent)
         Log.i(tag, "T4T card emulation service started: $ndefMesage")
-        val uriPrefix = ndefMesage.records[0].payload.get(0)
+        val uriPrefix = ndefMesage.records[0].payload[0]
         val uriData = ndefMesage.records[0].payload.drop(1).toByteArray()
         Log.i(tag, "decoded payload: URI Prefix Code = $uriPrefix, URI Data = ${String(uriData)}")
         val oob = Base64.getDecoder().decode(
@@ -77,15 +91,16 @@ class MainActivity : ComponentActivity() {
                 .substringBefore("&")
         )
         Log.i(tag, "decoded oob: invitation = ${String(oob)}")
-        // instantiate controller
-        controller = Controller(this, mainViewModel)
-        lifecycle.coroutineScope.launch {
-            withContext(Dispatchers.IO){
-                controller.start()
-            }
+    }
+
+    private fun startController(mainViewModel: MainViewModel) {
+        controller = Controller(mainViewModel)
+        lifecycleScope.launch(Dispatchers.IO) {
+            controller.start()
         }
         Log.i(tag, "controller started")
     }
+
 }
 
 @Preview(
@@ -97,6 +112,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun DefaultPreview() {
     MobileVerifierTheme {
-        MainScreen()
+        MainScreen() {}
     }
 }

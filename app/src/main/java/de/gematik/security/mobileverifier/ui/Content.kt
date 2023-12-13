@@ -1,0 +1,71 @@
+package de.gematik.security.mobileverifier.ui
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import de.gematik.security.mobileverifier.R
+import de.gematik.security.mobileverifier.ui.theme.MobileVerifierTheme
+
+@Composable
+fun Content(verificationState: VerificationState, modifier: Modifier = Modifier, onVisualVerificationConfirmed: () -> Unit) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center
+    ) {
+        if (verificationState.progress == Progress.PORTRAIT_VERIFICATION) {
+            // show title and portrait
+            Button(
+                onClick = {
+                    if(verificationState.progress == Progress.PORTRAIT_VERIFICATION) onVisualVerificationConfirmed()
+                },
+                shape = RoundedCornerShape(8.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.White
+                ),
+            ) {
+                verificationState.portrait?.let {
+                    Image(
+                        it,
+                        contentDescription = "portrait",
+                        modifier = Modifier.size(250.dp)
+                    )
+                } ?: Image(
+                    painterResource(R.drawable.portrait_blau_gematik),
+                    "unknown portrait",
+                    modifier = Modifier.size(250.dp)
+                )
+            }
+        } else {
+            Image(
+                painterResource(
+                    if (verificationState.progress != Progress.COMPLETED) {
+                        R.drawable.unknown
+                    } else {
+                        if (verificationState.isSuccess()) R.drawable.approved else R.drawable.denied
+                    }
+                ),
+                "status",
+                modifier = Modifier.size(250.dp)
+            )
+        }
+    }
+}
+
+@Preview
+@Composable
+private fun  ContentPreview() {
+    val verificationState = VerificationState(Progress.COMPLETED)
+    MobileVerifierTheme {
+        Content(verificationState = verificationState){}
+    }
+}
