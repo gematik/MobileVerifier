@@ -184,7 +184,7 @@ class Controller(val mainViewModel: MainViewModel) {
                 Descriptor(
                     id = UUID.randomUUID().toString(),
                     frame = Credential(
-                        // frame requesting vaccination status and holder id
+                        // frame requesting vaccination status and recipient id (holderkey)
                         atContext = Credential.DEFAULT_JSONLD_CONTEXTS + listOf(URI.create("https://w3id.org/vaccination/v1")),
                         type = Credential.DEFAULT_JSONLD_TYPES + listOf("VaccinationCertificate"),
                         credentialSubject = JsonLdObject(
@@ -197,7 +197,7 @@ class Controller(val mainViewModel: MainViewModel) {
                                     mapOf(
                                         "@explicit" to JsonPrimitive(true),
                                         "type" to JsonArray(listOf(JsonPrimitive("VaccineRecipient"))),
-                                        "id" to JsonObject(mapOf()) // holder id
+                                        "id" to JsonObject(mapOf()) // recipient id
                                     )
                                 )
                             )
@@ -207,7 +207,7 @@ class Controller(val mainViewModel: MainViewModel) {
                 Descriptor(
                     id = UUID.randomUUID().toString(),
                     frame = Credential(
-                        // frame requesting portrait and holder id
+                        // frame requesting portrait and insurant id (holderkey)
                         atContext = Credential.DEFAULT_JSONLD_CONTEXTS + listOf(URI.create("https://gematik.de/vsd/v1")),
                         type = Credential.DEFAULT_JSONLD_TYPES + listOf("InsuranceCertificate"),
                         credentialSubject = JsonLdObject(
@@ -215,11 +215,11 @@ class Controller(val mainViewModel: MainViewModel) {
                                 "@explicit" to JsonPrimitive(true),
                                 "@requireAll" to JsonPrimitive(true),
                                 "type" to JsonArray(listOf(JsonPrimitive("Insurance"))),
-                                "id" to JsonObject(mapOf()), // holder id
                                 "insurant" to JsonObject(
                                     mapOf(
                                         "@explicit" to JsonPrimitive(true),
                                         "type" to JsonArray(listOf(JsonPrimitive("Insurant"))),
+                                        "id" to JsonObject(mapOf()), // insurant id
                                         "portrait" to JsonObject(mapOf())
                                     )
                                 )
