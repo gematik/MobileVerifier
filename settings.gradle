@@ -11,6 +11,7 @@ dependencyResolutionManagement {
         mavenLocal()
         google()
         mavenCentral()
+        maven { url "https://maven.scijava.org/content/repositories/public/" }
     }
 }
 rootProject.name = "MobileVerifier"

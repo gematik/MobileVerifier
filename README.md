@@ -1,3 +1,35 @@
+<img align="right" width="250" height="47" src="Gematik_Logo_Flag_With_Background.png"/> <br/> 
+
+# Mobile Verifier
+
+<details>
+  <summary>Table of Contents</summary>
+  <ol>
+    <li>
+      <a href="#about-the-project">About The Project</a>
+	</li>
+    <li>
+      <a href="#getting-started">Getting Started</a>
+      <ul>
+        <li><a href="#prerequisites">Prerequisites</a></li>
+      </ul>
+    </li>
+    <li><a href="#contributing">Contributing</a></li>
+    <li><a href="#license">License</a></li>
+  </ol>
+</details>
+
+## About The Project
+Mobile Verifier based on credential exhchange lib.
+This Work ist part of a discontinued collaboration within [IDUnion project](https://idunion.org/projekt/?lang=en)
+
+## Getting Started
+### Prerequisites
+[credentialExchangeLib](https://github.com/gematik/poc-fue-credentialExchangeLib) needs to be installed to MavenLocal.
+
+## Contributing
+This project is part of a proof of concept which is no longer being maintained.
+
 ## License
 
 EUROPEAN UNION PUBLIC LICENCE v. 1.2
